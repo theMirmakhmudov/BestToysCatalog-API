@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Query
+from fastapi import APIRouter, Depends, Request, Query, Form, File, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, and_, or_
 from app.schemas.product import ProductCreate, ProductUpdate
@@ -9,31 +9,141 @@ from app.core.i18n import get_lang
 from app.db.models.product import Product
 from app.db.models.category import Category
 from app.core.permissions import IsAuthenticated
+from pathlib import Path
+import uuid, shutil
 
 router = APIRouter()
 
+UPLOAD_DIR = Path("app/static/uploads/products")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
 @router.post("")
-def create_product(body: ProductCreate, db: Session = Depends(get_db), admin=Depends(admin_required), request: Request=None):
-    if body.price is not None and body.price < 0:
+async def create_product(
+    name_uz: str = Form(...),
+    name_ru: str = Form(...),
+    price: float = Form(...),
+    category_id: int = Form(...),
+    description_uz: str | None = Form(None),
+    description_ru: str | None = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin=Depends(admin_required),
+    request: Request = None
+):
+    # ✅ Validatsiya
+    if price < 0:
         raise BaseHTTPException(422, ErrorCodes.VALIDATION_ERROR, "Price cannot be negative.")
-    cat = db.get(Category, body.category_id)
+
+    cat = db.get(Category, category_id)
     if not cat:
         raise BaseHTTPException(404, ErrorCodes.NOT_FOUND, "Category not found.")
-    p = Product(**body.model_dump())
-    db.add(p); db.commit(); db.refresh(p)
+
+    # ✅ Faylni tekshirish
+    ext = file.filename.split(".")[-1].lower()
+    if ext not in ["jpg", "jpeg", "png", "webp"]:
+        raise BaseHTTPException(400, ErrorCodes.VALIDATION_ERROR, "Invalid image format. Only JPG, PNG, WEBP supported.")
+
+    # ✅ Faylni saqlash
+    filename = f"{uuid.uuid4()}.{ext}"
+    file_path = UPLOAD_DIR / filename
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise BaseHTTPException(500, ErrorCodes.INTERNAL_ERROR, f"File save error: {e}")
+
+    image_url = f"/static/uploads/products/{filename}"
+
+    # ✅ Ma’lumotni DBga yozish
+    p = Product(
+        name_uz=name_uz,
+        name_ru=name_ru,
+        description_uz=description_uz,
+        description_ru=description_ru,
+        price=price,
+        category_id=category_id,
+        image_url=image_url
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+
+    # ✅ Tilni aniqlash
     lang = get_lang(request)
     name = p.name_ru if lang == "ru" else p.name_uz
     desc = p.description_ru if lang == "ru" else p.description_uz
-    return base_success({"id": p.id, "name": name, "description": desc, "price": float(p.price), "image_url": p.image_url, "category_id": p.category_id}, lang=lang)
 
+    return base_success(
+        {
+            "id": p.id,
+            "name": name,
+            "description": desc,
+            "price": float(p.price),
+            "image_url": p.image_url,
+            "category_id": p.category_id,
+        },
+        lang=lang
+    )
 @router.put("/{id}")
-def update_product(id: int, body: ProductUpdate, db: Session = Depends(get_db), admin=Depends(admin_required), request: Request=None):
+async def update_product(
+    id: int,
+    name_uz: str | None = Form(None),
+    name_ru: str | None = Form(None),
+    price: float | None = Form(None),
+    category_id: int | None = Form(None),
+    description_uz: str | None = Form(None),
+    description_ru: str | None = Form(None),
+    file: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    admin=Depends(admin_required),
+    request: Request = None
+):
+    """🧸 Mahsulotni yangilash (ma'lumot + rasm optional)"""
     p = db.get(Product, id)
     if not p:
         raise BaseHTTPException(404, ErrorCodes.NOT_FOUND, "Product not found.")
-    for k, v in body.model_dump(exclude_unset=True).items():
-        setattr(p, k, v)
-    db.commit(); db.refresh(p)
+
+    # 🧩 Rasm yangilash (agar yangi fayl yuborilsa)
+    if file:
+        ext = file.filename.split(".")[-1].lower()
+        if ext not in ["jpg", "jpeg", "png", "webp"]:
+            raise BaseHTTPException(400, ErrorCodes.VALIDATION_ERROR, "Invalid image format. Only JPG, PNG, WEBP supported.")
+
+        # Eski faylni o‘chirish (agar mavjud bo‘lsa)
+        if p.image_url and "static/uploads/products/" in p.image_url:
+            old_path = Path("app") / p.image_url.strip("/")
+            if old_path.exists():
+                old_path.unlink(missing_ok=True)
+
+        # Yangi faylni saqlash
+        filename = f"{uuid.uuid4()}.{ext}"
+        file_path = UPLOAD_DIR / filename
+        try:
+            with file_path.open("wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+        except Exception as e:
+            raise BaseHTTPException(500, ErrorCodes.INTERNAL_ERROR, f"File save error: {e}")
+
+        p.image_url = f"/static/uploads/products/{filename}"
+
+    # 🧱 Ma'lumotlarni yangilash
+    updates = {
+        "name_uz": name_uz,
+        "name_ru": name_ru,
+        "description_uz": description_uz,
+        "description_ru": description_ru,
+        "price": price,
+        "category_id": category_id,
+    }
+    for key, value in updates.items():
+        if value is not None:
+            setattr(p, key, value)
+
+    db.commit()
+    db.refresh(p)
+
     lang = get_lang(request)
     return base_success({
         "id": p.id,

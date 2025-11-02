@@ -3,9 +3,8 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
-from app.core.config import settings
-from app.core.response import base_success, BaseHTTPException, ErrorCodes
+from fastapi.staticfiles import StaticFiles
+from app.core.response import BaseHTTPException, ErrorCodes
 from app.core.i18n import get_lang
 from app.core.deps import create_db_and_init_admin
 from app.routers import auth, categories, products, orders, system
@@ -46,3 +45,5 @@ def create_app():
     return app
 
 app = create_app()
+
+app.mount("/static", StaticFiles(directory="app/static"), name="static")

@@ -14,7 +14,7 @@ router = APIRouter()
 @router.post("/register")
 def register(req: RegisterRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db), request: Request = None):
     user, plain_password = register_user(db, req.customer_name, req.phone_number, req.email)
-    subject, html_body = build_welcome_email(user.customer_name, user.email, plain_password)
+    subject, html_body = build_welcome_email(user.customer_name, user.phone_number, user.email, plain_password)
     background_tasks.add_task(send_email_sync, user.email, subject, html_body)
 
     return base_success({"message": "User created. Password sent to email.", "role": "user"}, lang=get_lang(request))
