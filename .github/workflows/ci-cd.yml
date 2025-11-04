@@ -98,24 +98,23 @@ jobs:
           set -e
           echo "✅ MAIN branch detected — starting deploy..."
 
-          # 1️⃣ Copy deploy files
+          # 1️⃣ Upload deploy files
+          echo "📤 Uploading service and Nginx configs..."
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/toys_catalog.service
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.nginx.conf $USER@$HOST:/tmp/toys_catalog.nginx.conf
 
-          # 2️⃣ SSH into server
+          # 2️⃣ SSH into the server
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<'EOF'
           set -e
-
-          echo "📦 Preparing /var/www/toys_catalog directory..."
+          echo "📦 Preparing /var/www/toys_catalog..."
           sudo mkdir -p /var/www/toys_catalog
           cd /var/www/toys_catalog
 
-          echo "📥 Pulling latest code..."
+          echo "📥 Fetching latest code..."
           if [ -d .git ]; then
             git fetch origin main
             git reset --hard origin/main
           else
-            echo "⚠️ No git repo found — cloning fresh..."
             git clone https://github.com/theMirmakhmudov/BestToysCatalog-API.git /var/www/toys_catalog
           fi
 
@@ -143,11 +142,9 @@ jobs:
           SMTP_TLS=${SMTP_TLS}
           EOT
 
-          echo "🐍 Setting up virtual environment..."
+          echo "🐍 Setting up Python virtual environment..."
           python3 -m venv .venv
           source .venv/bin/activate
-
-          echo "📦 Installing dependencies..."
           pip install --upgrade pip
           pip install -r requirements.txt
 
@@ -156,19 +153,18 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl enable toys_catalog.service
 
-          echo "🌐 Installing Nginx config..."
-          sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
-
-          if [ -f /tmp/toys_catalog.nginx.conf ]; then
-            sudo mv /tmp/toys_catalog.nginx.conf /etc/nginx/sites-available/toys_catalog.conf
-          else
-            echo "❌ Missing Nginx config file!"
-            exit 1
+          echo "🌐 Ensuring Nginx is installed..."
+          if ! command -v nginx &> /dev/null; then
+            sudo apt update -y
+            sudo apt install -y nginx
           fi
 
+          echo "🌐 Deploying Nginx config..."
+          sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+          sudo mv /tmp/toys_catalog.nginx.conf /etc/nginx/sites-available/toys_catalog.conf
           sudo ln -sf /etc/nginx/sites-available/toys_catalog.conf /etc/nginx/sites-enabled/toys_catalog.conf
 
-          echo "🧩 Testing Nginx configuration..."
+          echo "🧪 Testing Nginx configuration..."
           sudo nginx -t
 
           echo "🔄 Reloading Nginx..."
@@ -177,11 +173,11 @@ jobs:
           echo "♻️ Restarting FastAPI service..."
           sudo systemctl restart toys_catalog.service || (sudo journalctl -u toys_catalog.service -n 40 --no-pager && exit 1)
 
-          echo "⏱ Waiting 5s for health check..."
+          echo "⏱ Waiting 5s for service health..."
           sleep 5
 
           if systemctl is-active --quiet toys_catalog.service; then
-            echo "✅ Deploy successful and service active!"
+            echo "✅ Deploy successful — service is active!"
           else
             echo "❌ Deploy failed — service not running!"
             sudo journalctl -u toys_catalog.service -n 40 --no-pager
