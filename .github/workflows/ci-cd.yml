@@ -98,14 +98,14 @@ jobs:
           set -e
           echo "✅ MAIN branch detected — starting deploy..."
 
-          # --- 1️⃣ Copy service file to server ---
+          # 1️⃣ Copy service file
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/toys_catalog.service
 
-          # --- 2️⃣ SSH into server and deploy ---
+          # 2️⃣ SSH into server
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<'EOF'
           set -e
 
-          echo "📦 Preparing /var/www/toys_catalog directory..."
+          echo "📦 Preparing /var/www/toys_catalog..."
           sudo mkdir -p /var/www/toys_catalog
           cd /var/www/toys_catalog
 
@@ -118,7 +118,7 @@ jobs:
             git clone https://github.com/theMirmakhmudov/BestToysCatalog-API.git /var/www/toys_catalog
           fi
 
-          echo "🧩 Updating environment file..."
+          echo "🧩 Writing environment variables..."
           cat > /var/www/toys_catalog/.env <<EOT
           DATABASE_URL=${DATABASE_URL}
           JWT_SECRET=${JWT_SECRET}
@@ -142,10 +142,13 @@ jobs:
           SMTP_TLS=${SMTP_TLS}
           EOT
 
-          echo "📦 Installing Python dependencies..."
-          sudo apt update -y
-          sudo apt install -y python3-pip
-          pip3 install --no-cache-dir -r requirements.txt
+          echo "🐍 Setting up virtual environment..."
+          python3 -m venv .venv
+          source .venv/bin/activate
+
+          echo "📦 Installing dependencies in venv..."
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
           echo "⚙️ Installing systemd service..."
           sudo mv /tmp/toys_catalog.service /etc/systemd/system/toys_catalog.service
