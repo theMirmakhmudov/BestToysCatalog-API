@@ -104,7 +104,10 @@ jobs:
           # --- 2️⃣ SSH into server and deploy ---
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<'EOF'
           set -e
-          cd /var/www/
+
+          echo "📦 Preparing /var/www/toys_catalog directory..."
+          sudo mkdir -p /var/www/toys_catalog
+          cd /var/www/toys_catalog
 
           echo "📥 Pulling latest code..."
           if [ -d .git ]; then
@@ -112,12 +115,11 @@ jobs:
             git reset --hard origin/main
           else
             echo "⚠️ No git repo found — cloning fresh..."
-            git clone https://github.com/theMirmakhmudov/BestToysCatalog-API.git /var/www/
-            cd /var/www/
+            git clone https://github.com/theMirmakhmudov/BestToysCatalog-API.git /var/www/toys_catalog
           fi
 
           echo "🧩 Updating environment file..."
-          cat > .env <<EOT
+          cat > /var/www/toys_catalog/.env <<EOT
           DATABASE_URL=${DATABASE_URL}
           JWT_SECRET=${JWT_SECRET}
           JWT_ALG=${JWT_ALG}
@@ -140,13 +142,18 @@ jobs:
           SMTP_TLS=${SMTP_TLS}
           EOT
 
-          echo "⚙️ Installing updated systemd service..."
+          echo "📦 Installing Python dependencies..."
+          sudo apt update -y
+          sudo apt install -y python3-pip
+          pip3 install --no-cache-dir -r requirements.txt
+
+          echo "⚙️ Installing systemd service..."
           sudo mv /tmp/toys_catalog.service /etc/systemd/system/toys_catalog.service
           sudo systemctl daemon-reload
           sudo systemctl enable toys_catalog.service
 
           echo "♻️ Restarting service..."
-          sudo systemctl restart toys_catalog.service
+          sudo systemctl restart toys_catalog.service || (sudo journalctl -u toys_catalog.service -n 40 --no-pager && exit 1)
 
           echo "⏱ Waiting 5s for service..."
           sleep 5
@@ -155,7 +162,7 @@ jobs:
             echo "✅ Deploy successful and service active!"
           else
             echo "❌ Deploy failed — service not running!"
-            sudo journalctl -u toys_catalog.service -n 20 --no-pager
+            sudo journalctl -u toys_catalog.service -n 40 --no-pager
             exit 1
           fi
           EOF

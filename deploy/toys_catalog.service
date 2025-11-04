@@ -3,13 +3,15 @@ Description=🧸 Toys Catalog FastAPI Service
 After=network.target
 
 [Service]
-User=www-data
-Group=www-data
+User=root
+Group=root
 WorkingDirectory=/var/www/toys_catalog
+EnvironmentFile=-/var/www/toys_catalog/.env
 ExecStart=/usr/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-EnvironmentFile=/var/www/toys_catalog/.env
 Restart=always
 RestartSec=5
+StandardOutput=append:/var/log/toys_catalog.log
+StandardError=append:/var/log/toys_catalog.err
 
 [Install]
 WantedBy=multi-user.target
