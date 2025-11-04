@@ -104,11 +104,17 @@ jobs:
           # --- 2️⃣ SSH into server and deploy ---
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<'EOF'
           set -e
-          cd /var/www/
+          cd /var/www/toys_catalog
 
           echo "📥 Pulling latest code..."
-          git fetch origin main
-          git reset --hard origin/main
+          if [ -d .git ]; then
+            git fetch origin main
+            git reset --hard origin/main
+          else
+            echo "⚠️ No git repo found — cloning fresh..."
+            git clone https://github.com/theMirmakhmudov/BestToysCatalog-API.git /var/www/
+            cd /var/www/
+          fi
 
           echo "🧩 Updating environment file..."
           cat > .env <<EOT
