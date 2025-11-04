@@ -98,7 +98,7 @@ jobs:
           set -e
           echo "✅ MAIN branch detected — starting deploy..."
 
-          # 1️⃣ Copy configs to server
+          # 1️⃣ Copy deploy files
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/toys_catalog.service
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.nginx.conf $USER@$HOST:/tmp/toys_catalog.nginx.conf
 
@@ -106,7 +106,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<'EOF'
           set -e
 
-          echo "📦 Preparing /var/www/toys_catalog..."
+          echo "📦 Preparing /var/www/toys_catalog directory..."
           sudo mkdir -p /var/www/toys_catalog
           cd /var/www/toys_catalog
 
@@ -157,10 +157,22 @@ jobs:
           sudo systemctl enable toys_catalog.service
 
           echo "🌐 Installing Nginx config..."
-          sudo mv /tmp/toys_catalog.nginx.conf /etc/nginx/sites-available/toys_catalog.conf
+          sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+
+          if [ -f /tmp/toys_catalog.nginx.conf ]; then
+            sudo mv /tmp/toys_catalog.nginx.conf /etc/nginx/sites-available/toys_catalog.conf
+          else
+            echo "❌ Missing Nginx config file!"
+            exit 1
+          fi
+
           sudo ln -sf /etc/nginx/sites-available/toys_catalog.conf /etc/nginx/sites-enabled/toys_catalog.conf
+
+          echo "🧩 Testing Nginx configuration..."
           sudo nginx -t
-          sudo systemctl reload nginx
+
+          echo "🔄 Reloading Nginx..."
+          sudo systemctl reload nginx || sudo systemctl restart nginx
 
           echo "♻️ Restarting FastAPI service..."
           sudo systemctl restart toys_catalog.service || (sudo journalctl -u toys_catalog.service -n 40 --no-pager && exit 1)
