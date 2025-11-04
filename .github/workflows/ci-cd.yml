@@ -98,6 +98,10 @@ jobs:
           set -e
           echo "✅ MAIN branch detected — starting deploy..."
 
+          # --- 1️⃣ Copy service file to server ---
+          scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/toys_catalog.service
+
+          # --- 2️⃣ SSH into server and deploy ---
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<'EOF'
           set -e
           cd /var/www/toys_catalog
@@ -130,8 +134,12 @@ jobs:
           SMTP_TLS=${SMTP_TLS}
           EOT
 
-          echo "♻️ Restarting systemd service..."
+          echo "⚙️ Installing updated systemd service..."
+          sudo mv /tmp/toys_catalog.service /etc/systemd/system/toys_catalog.service
           sudo systemctl daemon-reload
+          sudo systemctl enable toys_catalog.service
+
+          echo "♻️ Restarting service..."
           sudo systemctl restart toys_catalog.service
 
           echo "⏱ Waiting 5s for service..."
