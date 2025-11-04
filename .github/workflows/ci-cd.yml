@@ -104,7 +104,7 @@ jobs:
           # --- 2️⃣ SSH into server and deploy ---
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<'EOF'
           set -e
-          cd /var/www/toys_catalog
+          cd /var/www/
 
           echo "📥 Pulling latest code..."
           git fetch origin main
