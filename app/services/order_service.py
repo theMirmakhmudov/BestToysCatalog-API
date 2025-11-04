@@ -32,21 +32,42 @@ def create_order(db: Session, user_id: int, shipping_address: str, phone_number:
     db.commit()
     return {"order_id": order.id, "status": order.status.value, "total_amount": float(total), "created_at": str(order.created_at)}
 
+from sqlalchemy.orm import joinedload
+from sqlalchemy import select
+
 def order_to_dict(db: Session, order: Order, lang: str):
-    items = db.execute(select(OrderItem).where(OrderItem.order_id == order.id)).scalars().all()
-    total = sum([float(i.subtotal) for i in items])
+    # ensure user relationship is loaded (just in case)
+    if not getattr(order, "user", None):
+        order = (
+            db.query(Order)
+            .options(joinedload(Order.user))
+            .filter(Order.id == order.id)
+            .first()
+        )
+
+    items = db.execute(
+        select(OrderItem).where(OrderItem.order_id == order.id)
+    ).scalars().all()
+
+    total = sum(float(i.subtotal) for i in items)
+
     out_items = []
     for i in items:
         out_items.append({
-            "product_id": i.product_snapshot["id"],
-            "product_name": i.product_snapshot["name"],
-            "product_price": i.product_snapshot["price"],
+            "product_id": i.product_snapshot.get("id"),
+            "product_name": i.product_snapshot.get("name"),
+            "product_price": i.product_snapshot.get("price"),
             "quantity": i.quantity,
-            "subtotal": float(i.subtotal)
+            "subtotal": float(i.subtotal),
+            # optional: you can add image if your snapshot includes it
+            "image_url": i.product_snapshot.get("image_url")
         })
+
     return {
         "order_id": order.id,
         "status": order.status.value,
+        "customer_name": order.user.customer_name if order.user else None,  # ✅ added
+        "customer_email": order.user.email if order.user else None,          # optional
         "total_amount": total,
         "shipping_address": order.shipping_address,
         "phone_number": order.phone_number,

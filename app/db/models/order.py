@@ -15,6 +15,7 @@ class Order(Base):
     __tablename__ = "orders"
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    user: Mapped["User"] = relationship("User", backref="orders")
     status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus), default=OrderStatus.checking, server_default="checking")
     shipping_address: Mapped[str] = mapped_column(String(255))
     phone_number: Mapped[str] = mapped_column(String(20))

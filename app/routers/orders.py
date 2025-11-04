@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
+
+from app.db.models.category import Category
 from app.schemas.order import OrderCreate, OrderUpdate, CancelRequest
 from app.core.deps import get_db, get_current_user, admin_required
 from app.core.response import base_success, BaseHTTPException, ErrorCodes
@@ -8,6 +10,9 @@ from app.core.i18n import get_lang
 from app.db.models.order import Order, OrderItem, OrderStatus
 from app.services.order_service import create_order, order_to_dict
 from app.utils.pdf import generate_order_pdf
+from decimal import Decimal
+from fastapi.responses import Response
+from zoneinfo import ZoneInfo
 
 router = APIRouter()
 
@@ -119,13 +124,54 @@ def complete(id: int, db: Session = Depends(get_db), admin=Depends(admin_require
     return base_success({"order_id": o.id, "status": o.status.value}, lang=get_lang(request))
 
 @router.get("/{id}/receipt")
-def receipt(id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    o = db.get(Order, id)
-    if not o:
-        raise BaseHTTPException(404, ErrorCodes.NOT_FOUND, "Order not found.")
-    if user.role.value != "admin" and o.user_id != user.id:
-        raise BaseHTTPException(403, ErrorCodes.FORBIDDEN, "Not your order.")
-    data = order_to_dict(db, o, "uz")
+def get_receipt(id: int, request: Request, db: Session = Depends(get_db)):
+    order = db.get(Order, id)
+    if not order:
+        return {"error": "Order not found"}
+
+    items = db.query(OrderItem).filter(OrderItem.order_id == order.id).all()
+
+    total = sum([i.subtotal for i in items])
+    tax = (total * Decimal("0.12")).quantize(Decimal("0.01"))
+    shipping = Decimal("100000.00")
+    total_all = total + shipping + tax
+
+    tz = ZoneInfo("Asia/Tashkent")
+    created_local = order.created_at.astimezone(tz)
+    base_url = str(request.base_url).rstrip('/')
+
+    data = {
+        "order_id": order.id,
+        "customer_name": order.user.customer_name,
+        "phone_number": order.phone_number,
+        "shipping_address": order.shipping_address,
+        "date": created_local.strftime("%d.%m.%Y"),
+        "time": created_local.strftime("%H:%M:%S"),
+        "subtotal": total,
+        "shipping": shipping,
+        "tax": tax,
+        "total": total_all,
+        "items": [],
+    }
+
+    for i in items:
+        # Try to get category name
+        category_name = "-"
+        category_id = i.product_snapshot.get("category_id")
+        if category_id:
+            category = db.get(Category, category_id)
+            if category:
+                category_name = getattr(category, "name_uz", None) or getattr(category, "name", "-")
+
+        data["items"].append({
+            "name": i.product_snapshot.get("name", "-"),
+            "category": category_name,
+            "price": i.product_snapshot.get("price", 0),
+            "quantity": i.quantity,
+            "subtotal": i.subtotal,
+            "image_url": f"{base_url}{i.product_snapshot.get('image_url', '')}"
+        })
+
     pdf = generate_order_pdf(data)
-    headers = {"Content-Disposition": f'inline; filename="order_{o.id}.pdf"'}
+    headers = {"Content-Disposition": f'inline; filename=\"order_{order.id}_receipt.pdf\"'}
     return Response(content=pdf, media_type="application/pdf", headers=headers)
