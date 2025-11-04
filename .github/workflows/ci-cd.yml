@@ -98,8 +98,9 @@ jobs:
           set -e
           echo "✅ MAIN branch detected — starting deploy..."
 
-          # 1️⃣ Copy service file
+          # 1️⃣ Copy configs to server
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/toys_catalog.service
+          scp -o StrictHostKeyChecking=no deploy/toys_catalog.nginx.conf $USER@$HOST:/tmp/toys_catalog.nginx.conf
 
           # 2️⃣ SSH into server
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<'EOF'
@@ -146,7 +147,7 @@ jobs:
           python3 -m venv .venv
           source .venv/bin/activate
 
-          echo "📦 Installing dependencies in venv..."
+          echo "📦 Installing dependencies..."
           pip install --upgrade pip
           pip install -r requirements.txt
 
@@ -155,10 +156,16 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl enable toys_catalog.service
 
-          echo "♻️ Restarting service..."
+          echo "🌐 Installing Nginx config..."
+          sudo mv /tmp/toys_catalog.nginx.conf /etc/nginx/sites-available/toys_catalog.conf
+          sudo ln -sf /etc/nginx/sites-available/toys_catalog.conf /etc/nginx/sites-enabled/toys_catalog.conf
+          sudo nginx -t
+          sudo systemctl reload nginx
+
+          echo "♻️ Restarting FastAPI service..."
           sudo systemctl restart toys_catalog.service || (sudo journalctl -u toys_catalog.service -n 40 --no-pager && exit 1)
 
-          echo "⏱ Waiting 5s for service..."
+          echo "⏱ Waiting 5s for health check..."
           sleep 5
 
           if systemctl is-active --quiet toys_catalog.service; then
