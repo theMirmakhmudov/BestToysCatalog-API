@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from app.schemas.auth import RegisterRequest, AdminRegisterRequest, LoginRequest
+from app.schemas.auth import RegisterRequest, AdminRegisterRequest, LoginRequest, ForgotPasswordRequest
 from app.core.deps import get_db, get_current_user, admin_required
 from app.core.response import base_success, BaseHTTPException, ErrorCodes
 from app.core.i18n import get_lang
-from app.services.auth_service import register_user, register_admin, login
+from app.services.auth_service import register_user, register_admin, login, reset_password
 from app.db.models.user import User
 from app.utils.emailer import send_email_sync, build_welcome_email
 
@@ -45,6 +45,21 @@ def get_me(current: User = Depends(get_current_user), request: Request = None):
         "created_at": str(current.created_at)
     }
     return base_success(data, lang=get_lang(request))
+
+@router.post("/forgot-password")
+def forgot_password_endpoint(
+    data: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(admin_required),
+):
+    """
+    Foydalanuvchi parolini unutganda:
+    - email bo'yicha user topiladi
+    - yangi parol generatsiya qilinadi
+    - emailga yuboriladi
+    """
+    reset_password(db, data.email)
+    return base_success(data)
 
 @router.post("/refresh-token")
 def refresh_token(refresh_token: str, request: Request = None):

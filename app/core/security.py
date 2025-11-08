@@ -33,3 +33,6 @@ def decode_token(token: str) -> dict:
         raise Exception("Token expired.")
     except InvalidTokenError:
         raise Exception("Invalid token.")
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
