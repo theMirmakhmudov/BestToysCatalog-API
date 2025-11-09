@@ -72,3 +72,31 @@ def refresh_token(refresh_token: str, request: Request = None):
     new_access = create_token(payload["sub"], payload.get("role", "user"), settings.ACCESS_TTL_SECONDS)
     return base_success({"access_token": new_access, "token_type": "bearer", "expires_in": settings.ACCESS_TTL_SECONDS}, lang=get_lang(request))
 
+@router.get("/get-all-users")
+def get_all_users(
+    db: Session = Depends(get_db),
+    _: User = Depends(admin_required),
+    request: Request = None
+):
+    """
+    🔒 Faqat admin/super-admin kirishi mumkin.
+    Barcha userlarni olish uchun endpoint.
+    """
+    users = db.execute(select(User)).scalars().all()
+
+    data = [
+        {
+            "id": user.id,
+            "customer_name": user.customer_name,
+            "phone_number": user.phone_number,
+            "email": user.email,
+            "role": user.role.value,
+            "created_at": str(user.created_at)
+        }
+        for user in users
+    ]
+
+    return base_success(
+        {"users": data, "count": len(data)},
+        lang=get_lang(request)
+    )
