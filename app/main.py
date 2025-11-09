@@ -12,7 +12,7 @@ from app.routers import auth, categories, products, orders, system
 limiter = Limiter(key_func=get_remote_address)
 
 def create_app():
-    app = FastAPI(title="Toys Catalog API", version="v1", docs_url="/v1/docs", openapi_url="/v1/openapi.json", redoc_url="/v1/redoc")
+    app = FastAPI(title="Toys Catalog API", version="v1", docs_url="/api/v1/docs", openapi_url="/api/v1/openapi.json")
     app.state.limiter = limiter
 
     @app.exception_handler(RateLimitExceeded)
