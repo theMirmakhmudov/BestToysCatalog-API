@@ -8,8 +8,15 @@ from app.core.response import BaseHTTPException, ErrorCodes
 from app.core.i18n import get_lang
 from app.core.deps import create_db_and_init_admin
 from app.routers import auth, categories, products, orders, system
+from fastapi.middleware.cors import CORSMiddleware
 
 limiter = Limiter(key_func=get_remote_address)
+
+
+origins = [
+    "*",
+]
+
 
 def create_app():
     app = FastAPI(title="Toys Catalog API", version="v1", docs_url="/api/v1/docs", openapi_url="/api/v1/openapi.json")
@@ -46,4 +53,11 @@ def create_app():
 
 app = create_app()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
