@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
 from app.db.models.category import Category
-from app.schemas.order import OrderCreate, OrderUpdate, CancelRequest
+from app.schemas.order import OrderCreate, OrderUpdate, CancelRequest, OrderCreateResponse, OrderUpdateResponse, OrderResponse, OrderListResponse
+from app.schemas.base import BaseResponse
 from app.core.deps import get_db, get_current_user, admin_required
 from app.core.response import base_success, BaseHTTPException, ErrorCodes
 from app.core.i18n import get_lang
@@ -16,12 +17,16 @@ from zoneinfo import ZoneInfo
 
 router = APIRouter()
 
-@router.post("")
+@router.post("", response_model=BaseResponse[OrderCreateResponse])
 def create(body: OrderCreate, db: Session = Depends(get_db), user=Depends(get_current_user), request: Request=None):
-    data = create_order(db, user.id, body.shipping_address, body.phone_number, body.comment, [i.model_dump() for i in body.items], get_lang(request))
+    # RBAC: If user is not admin, they can only create order for themselves
+    if user.role.value != "admin" and body.user_id != user.id:
+        raise BaseHTTPException(403, ErrorCodes.FORBIDDEN, "Cannot create order for another user.")
+    
+    data = create_order(db, body.user_id, body.shipping_address, body.phone_number, body.comment, [i.model_dump() for i in body.items], get_lang(request))
     return base_success(data, lang=get_lang(request))
 
-@router.put("/{id}")
+@router.put("/{id}", response_model=BaseResponse[OrderUpdateResponse])
 def update(id: int, body: OrderUpdate, db: Session = Depends(get_db), admin=Depends(admin_required), request: Request=None):
     o = db.get(Order, id)
     if not o:
@@ -39,7 +44,7 @@ def delete(id: int, db: Session = Depends(get_db), admin=Depends(admin_required)
     db.delete(o); db.commit()
     return
 
-@router.get("/{id}")
+@router.get("/{id}", response_model=BaseResponse[OrderResponse])
 def get_one(id: int, db: Session = Depends(get_db), user=Depends(get_current_user), request: Request=None):
     o = db.get(Order, id)
     if not o:
@@ -48,7 +53,7 @@ def get_one(id: int, db: Session = Depends(get_db), user=Depends(get_current_use
         raise BaseHTTPException(403, ErrorCodes.FORBIDDEN, "Not your order.")
     return base_success(order_to_dict(db, o, get_lang(request)), lang=get_lang(request))
 
-@router.get("")
+@router.get("", response_model=BaseResponse[list[OrderResponse]])
 def list_orders(
     db: Session = Depends(get_db),
     admin=Depends(admin_required),
@@ -87,7 +92,7 @@ def list_orders(
     data = [order_to_dict(db, o, get_lang(request)) for o in rows]
     return base_success(data, lang=get_lang(request), pagination={"limit":limit,"offset":offset,"count":len(data),"total":total})
 
-@router.patch("/{id}/verify")
+@router.patch("/{id}/verify", response_model=BaseResponse[OrderUpdateResponse])
 def verify(id: int, db: Session = Depends(get_db), admin=Depends(admin_required), request: Request=None):
     o = db.get(Order, id)
     if not o:
@@ -98,13 +103,20 @@ def verify(id: int, db: Session = Depends(get_db), admin=Depends(admin_required)
     db.commit(); db.refresh(o)
     return base_success({"order_id": o.id, "status": o.status.value}, lang=get_lang(request))
 
-@router.patch("/{id}/cancel")
+@router.patch("/{id}/cancel", response_model=BaseResponse[OrderUpdateResponse])
 def cancel(id: int, body: CancelRequest, db: Session = Depends(get_db), user=Depends(get_current_user), request: Request=None):
     o = db.get(Order, id)
     if not o:
         raise BaseHTTPException(404, ErrorCodes.NOT_FOUND, "Order not found.")
+    
+    # RBAC: Admin can cancel any order, user only their own
     if user.role.value != "admin" and o.user_id != user.id:
         raise BaseHTTPException(403, ErrorCodes.FORBIDDEN, "Not your order.")
+    
+    # Check if body.user_id matches (optional validation, but good to have)
+    if user.role.value != "admin" and body.user_id != user.id:
+         raise BaseHTTPException(403, ErrorCodes.FORBIDDEN, "User ID mismatch.")
+
     if o.status in {OrderStatus.done, OrderStatus.cancelled}:
         raise BaseHTTPException(422, ErrorCodes.INVALID_ORDER, "Cannot cancel completed/already cancelled order.")
     o.status = OrderStatus.cancelled
@@ -112,7 +124,7 @@ def cancel(id: int, body: CancelRequest, db: Session = Depends(get_db), user=Dep
     db.commit(); db.refresh(o)
     return base_success({"order_id": o.id, "status": o.status.value, "cancel_reason": o.cancel_reason}, lang=get_lang(request))
 
-@router.patch("/{id}/complete")
+@router.patch("/{id}/complete", response_model=BaseResponse[OrderUpdateResponse])
 def complete(id: int, db: Session = Depends(get_db), admin=Depends(admin_required), request: Request=None):
     o = db.get(Order, id)
     if not o:

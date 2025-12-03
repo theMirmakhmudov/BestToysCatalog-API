@@ -4,7 +4,7 @@ from typing import Any, Optional, Dict
 class ErrorCodes:
     USER_EXISTS = "USER_EXISTS"
     AUTH_FAILED = "AUTH_FAILED"
-    TOKEN_EXPIRED = "TOKEN_EXPIRED"
+    TELEGRAM_MISMATCH = "TELEGRAM_MISMATCH"
     FORBIDDEN = "FORBIDDEN"
     NOT_FOUND = "NOT_FOUND"
     INVALID_ORDER = "INVALID_ORDER"
@@ -20,12 +20,15 @@ class BaseHTTPException(Exception):
         self.message = message
         self.details = details or {}
 
-    def to_response(self, lang: str = "uz"):
+    def to_response(self, lang: str = "uz", trace_id: str | None = None):
+        meta = {"lang": lang}
+        if trace_id:
+            meta["trace_id"] = trace_id
         return {
             "success": False,
             "data": None,
             "error": {"code": self.code, "message": self.message, "details": self.details},
-            "meta": {"lang": lang},
+            "meta": meta,
         }
 
 def base_success(data: Any = None, lang: str = "uz", pagination: dict | None = None, trace_id: str | None = None):

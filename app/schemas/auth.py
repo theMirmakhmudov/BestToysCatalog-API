@@ -1,27 +1,41 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel
+
 
 class RegisterRequest(BaseModel):
-    customer_name: str = Field(min_length=2, max_length=100)
-    phone_number: str = Field(pattern=r"^\+[1-9]\d{9,14}$")
-    email: EmailStr
-
-class AdminRegisterRequest(RegisterRequest):
-    password: str | None = Field(default=None, min_length=8, max_length=128)
-
-class AdminChangePasswordRequest(BaseModel):
-    user_id: int = Field(..., ge=1)
-    new_password: str = Field(..., min_length=6)
+    customer_name: str
+    phone_number: str
 
 
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
+class AdminRegisterRequest(BaseModel):
+    customer_name: str
+    phone_number: str
+
 
 class LoginRequest(BaseModel):
     phone_number: str
-    password: str
 
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str | None = None
-    token_type: str = "bearer"
-    expires_in: int
+
+class SetTelegramIdRequest(BaseModel):
+    phone_number: str
+    telegram_id: int
+
+
+class AuthResponse(BaseModel):
+    user_id: int
+    role: str
+    customer_name: str | None = None
+    telegram_id: int | None = None
+
+
+class UserResponse(BaseModel):
+    id: int
+    customer_name: str | None
+    phone_number: str
+    role: str
+    telegram_id: int | None = None
+    created_at: str
+
+
+class UserListResponse(BaseModel):
+    users: list[UserResponse]
+    count: int

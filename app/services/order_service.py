@@ -6,7 +6,7 @@ from app.core.response import BaseHTTPException, ErrorCodes
 from decimal import Decimal
 
 def snapshot_product(p: Product, lang: str) -> dict:
-    name = p.name_ru if lang == "ru" else p.name_uz
+    name = p.name_en if lang == "en" else (p.name_ru if lang == "ru" else p.name_uz)
     return {"id": p.id, "name": name, "price": float(p.price), "image_url": p.image_url, "category_id": p.category_id}
 
 def create_order(db: Session, user_id: int, shipping_address: str, phone_number: str, comment: str | None, items: list[dict], lang: str):
@@ -66,8 +66,7 @@ def order_to_dict(db: Session, order: Order, lang: str):
     return {
         "order_id": order.id,
         "status": order.status.value,
-        "customer_name": order.user.customer_name if order.user else None,  # ✅ added
-        "customer_email": order.user.email if order.user else None,          # optional
+        "customer_name": order.user.customer_name if order.user else None,
         "total_amount": total,
         "shipping_address": order.shipping_address,
         "phone_number": order.phone_number,

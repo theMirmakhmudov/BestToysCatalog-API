@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, Request, Query, Form, File, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, and_, or_
-from app.schemas.product import ProductCreate, ProductUpdate
+from app.schemas.product import ProductCreate, ProductUpdate, ProductOut, ProductListResponse
+from app.schemas.base import BaseResponse
 from app.core.deps import get_db, admin_required
 from app.core.response import base_success, BaseHTTPException, ErrorCodes
 from app.core.pagination import page_params
 from app.core.i18n import get_lang
 from app.db.models.product import Product
 from app.db.models.category import Category
-from app.core.permissions import IsAuthenticated
 from pathlib import Path
 import uuid, shutil
 
@@ -18,15 +18,17 @@ UPLOAD_DIR = Path("app/static/uploads/products")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@router.post("")
+@router.post("", response_model=BaseResponse[ProductOut])
 async def create_product(
     name_uz: str = Form(...),
     name_ru: str = Form(...),
+    name_en: str = Form(...),
     price: float = Form(...),
     category_id: int = Form(...),
     description_uz: str | None = Form(None),
     description_ru: str | None = Form(None),
-    file: UploadFile = File(...),
+    description_en: str | None = Form(None),
+    image_url: str = Form(...), # Changed to string URL as per TZ
     db: Session = Depends(get_db),
     admin=Depends(admin_required),
     request: Request = None
@@ -39,29 +41,14 @@ async def create_product(
     if not cat:
         raise BaseHTTPException(404, ErrorCodes.NOT_FOUND, "Category not found.")
 
-    # ✅ Faylni tekshirish
-    ext = file.filename.split(".")[-1].lower()
-    if ext not in ["jpg", "jpeg", "png", "webp"]:
-        raise BaseHTTPException(400, ErrorCodes.VALIDATION_ERROR, "Invalid image format. Only JPG, PNG, WEBP supported.")
-
-    # ✅ Faylni saqlash
-    filename = f"{uuid.uuid4()}.{ext}"
-    file_path = UPLOAD_DIR / filename
-
-    try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise BaseHTTPException(500, ErrorCodes.INTERNAL_ERROR, f"File save error: {e}")
-
-    image_url = f"/static/uploads/products/{filename}"
-
     # ✅ Ma’lumotni DBga yozish
     p = Product(
         name_uz=name_uz,
         name_ru=name_ru,
+        name_en=name_en,
         description_uz=description_uz,
         description_ru=description_ru,
+        description_en=description_en,
         price=price,
         category_id=category_id,
         image_url=image_url
@@ -72,70 +59,59 @@ async def create_product(
 
     # ✅ Tilni aniqlash
     lang = get_lang(request)
-    name = p.name_ru if lang == "ru" else p.name_uz
-    desc = p.description_ru if lang == "ru" else p.description_uz
+    name = p.name_en if lang == "en" else (p.name_ru if lang == "ru" else p.name_uz)
+    desc = p.description_en if lang == "en" else (p.description_ru if lang == "ru" else p.description_uz)
 
     return base_success(
-        {
-            "id": p.id,
-            "name": name,
-            "description": desc,
-            "price": float(p.price),
-            "image_url": p.image_url,
-            "category_id": p.category_id,
-        },
+        ProductOut(
+            id=p.id,
+            name=name,
+            name_uz=p.name_uz,
+            name_ru=p.name_ru,
+            name_en=p.name_en,
+            description=desc,
+            description_uz=p.description_uz,
+            description_ru=p.description_ru,
+            description_en=p.description_en,
+            price=float(p.price),
+            image_url=p.image_url,
+            category_id=p.category_id,
+        ),
         lang=lang
     )
-@router.put("/{id}")
+
+@router.put("/{id}", response_model=BaseResponse[ProductOut])
 async def update_product(
     id: int,
     name_uz: str | None = Form(None),
     name_ru: str | None = Form(None),
+    name_en: str | None = Form(None),
     price: float | None = Form(None),
     category_id: int | None = Form(None),
     description_uz: str | None = Form(None),
     description_ru: str | None = Form(None),
-    file: UploadFile | None = File(None),
+    description_en: str | None = Form(None),
+    image_url: str | None = Form(None),
     db: Session = Depends(get_db),
     admin=Depends(admin_required),
     request: Request = None
 ):
-    """🧸 Mahsulotni yangilash (ma'lumot + rasm optional)"""
+    """🧸 Mahsulotni yangilash"""
     p = db.get(Product, id)
     if not p:
         raise BaseHTTPException(404, ErrorCodes.NOT_FOUND, "Product not found.")
-
-    # 🧩 Rasm yangilash (agar yangi fayl yuborilsa)
-    if file:
-        ext = file.filename.split(".")[-1].lower()
-        if ext not in ["jpg", "jpeg", "png", "webp"]:
-            raise BaseHTTPException(400, ErrorCodes.VALIDATION_ERROR, "Invalid image format. Only JPG, PNG, WEBP supported.")
-
-        # Eski faylni o‘chirish (agar mavjud bo‘lsa)
-        if p.image_url and "static/uploads/products/" in p.image_url:
-            old_path = Path("app") / p.image_url.strip("/")
-            if old_path.exists():
-                old_path.unlink(missing_ok=True)
-
-        # Yangi faylni saqlash
-        filename = f"{uuid.uuid4()}.{ext}"
-        file_path = UPLOAD_DIR / filename
-        try:
-            with file_path.open("wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-        except Exception as e:
-            raise BaseHTTPException(500, ErrorCodes.INTERNAL_ERROR, f"File save error: {e}")
-
-        p.image_url = f"/static/uploads/products/{filename}"
 
     # 🧱 Ma'lumotlarni yangilash
     updates = {
         "name_uz": name_uz,
         "name_ru": name_ru,
+        "name_en": name_en,
         "description_uz": description_uz,
         "description_ru": description_ru,
+        "description_en": description_en,
         "price": price,
         "category_id": category_id,
+        "image_url": image_url
     }
     for key, value in updates.items():
         if value is not None:
@@ -145,14 +121,20 @@ async def update_product(
     db.refresh(p)
 
     lang = get_lang(request)
-    return base_success({
-        "id": p.id,
-        "name": (p.name_ru if lang == "ru" else p.name_uz),
-        "description": (p.description_ru if lang == "ru" else p.description_uz),
-        "price": float(p.price),
-        "image_url": p.image_url,
-        "category_id": p.category_id
-    }, lang=lang)
+    return base_success(ProductOut(
+        id=p.id,
+        name=(p.name_en if lang == "en" else (p.name_ru if lang == "ru" else p.name_uz)),
+        name_uz=p.name_uz,
+        name_ru=p.name_ru,
+        name_en=p.name_en,
+        description=(p.description_en if lang == "en" else (p.description_ru if lang == "ru" else p.description_uz)),
+        description_uz=p.description_uz,
+        description_ru=p.description_ru,
+        description_en=p.description_en,
+        price=float(p.price),
+        image_url=p.image_url,
+        category_id=p.category_id
+    ), lang=lang)
 
 @router.delete("/{id}", status_code=204)
 def delete_product(id: int, db: Session = Depends(get_db), admin=Depends(admin_required)):
@@ -162,25 +144,30 @@ def delete_product(id: int, db: Session = Depends(get_db), admin=Depends(admin_r
     db.delete(p); db.commit()
     return
 
-@router.get("/{id}")
-def get_product(id: int, db: Session = Depends(get_db), current=Depends(IsAuthenticated), request: Request=None):
+@router.get("/{id}", response_model=BaseResponse[ProductOut])
+def get_product(id: int, db: Session = Depends(get_db), request: Request=None):
     p = db.get(Product, id)
     if not p:
         raise BaseHTTPException(404, ErrorCodes.NOT_FOUND, "Product not found.")
     lang = get_lang(request)
-    return base_success({
-        "id": p.id,
-        "name": (p.name_ru if lang == "ru" else p.name_uz),
-        "description": (p.description_ru if lang == "ru" else p.description_uz),
-        "price": float(p.price),
-        "image_url": p.image_url,
-        "category_id": p.category_id
-    }, lang=lang)
+    return base_success(ProductOut(
+        id=p.id,
+        name=(p.name_en if lang == "en" else (p.name_ru if lang == "ru" else p.name_uz)),
+        name_uz=p.name_uz,
+        name_ru=p.name_ru,
+        name_en=p.name_en,
+        description=(p.description_en if lang == "en" else (p.description_ru if lang == "ru" else p.description_uz)),
+        description_uz=p.description_uz,
+        description_ru=p.description_ru,
+        description_en=p.description_en,
+        price=float(p.price),
+        image_url=p.image_url,
+        category_id=p.category_id
+    ), lang=lang)
 
-@router.get("")
+@router.get("", response_model=BaseResponse[list[ProductOut]])
 def list_products(
     db: Session = Depends(get_db),
-    current=Depends(IsAuthenticated),
     request: Request=None,
     lp: tuple[int,int]=Depends(page_params),
     category_id: int | None = None,
@@ -200,7 +187,14 @@ def list_products(
         conds.append(Product.price <= max_price)
     if q:
         like = f"%{q}%"
-        conds.append(or_(Product.name_uz.ilike(like), Product.name_ru.ilike(like), Product.description_uz.ilike(like), Product.description_ru.ilike(like)))
+        conds.append(or_(
+            Product.name_uz.ilike(like), 
+            Product.name_ru.ilike(like), 
+            Product.name_en.ilike(like),
+            Product.description_uz.ilike(like), 
+            Product.description_ru.ilike(like),
+            Product.description_en.ilike(like)
+        ))
     if conds:
         from sqlalchemy import and_
         stmt = stmt.where(and_(*conds))
@@ -219,18 +213,35 @@ def list_products(
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar()
     rows = db.execute(stmt.offset(offset).limit(limit)).scalars().all()
     lang = get_lang(request)
-    data = [{
-        "id": p.id,
-        "name": (p.name_ru if lang == "ru" else p.name_uz),
-        "description": (p.description_ru if lang == "ru" else p.description_uz),
-        "price": float(p.price),
-        "image_url": p.image_url,
-        "category_id": p.category_id
-    } for p in rows]
+    
+    def get_name(p):
+        if lang == "en": return p.name_en
+        if lang == "ru": return p.name_ru
+        return p.name_uz
+
+    def get_desc(p):
+        if lang == "en": return p.description_en
+        if lang == "ru": return p.description_ru
+        return p.description_uz
+
+    data = [ProductOut(
+        id=p.id,
+        name=get_name(p),
+        name_uz=p.name_uz,
+        name_ru=p.name_ru,
+        name_en=p.name_en,
+        description=get_desc(p),
+        description_uz=p.description_uz,
+        description_ru=p.description_ru,
+        description_en=p.description_en,
+        price=float(p.price),
+        image_url=p.image_url,
+        category_id=p.category_id
+    ) for p in rows]
     return base_success(data, lang=lang, pagination={"limit":limit,"offset":offset,"count":len(data),"total":total})
 
-@router.get("/category/{category_id}")
-def by_category(category_id: int, db: Session = Depends(get_db), current=Depends(IsAuthenticated), request: Request=None, lp: tuple[int,int]=Depends(page_params)):
+@router.get("/category/{category_id}", response_model=BaseResponse[list[ProductOut]])
+def by_category(category_id: int, db: Session = Depends(get_db), request: Request=None, lp: tuple[int,int]=Depends(page_params)):
     limit, offset = lp
     # ensure category exists
     from app.db.models.category import Category
@@ -240,12 +251,18 @@ def by_category(category_id: int, db: Session = Depends(get_db), current=Depends
     total = db.execute(select(func.count()).select_from(Product).where(Product.category_id == category_id)).scalar()
     rows = db.execute(select(Product).where(Product.category_id == category_id).offset(offset).limit(limit)).scalars().all()
     lang = get_lang(request)
-    data = [{
-        "id": p.id,
-        "name": (p.name_ru if lang == "ru" else p.name_uz),
-        "description": (p.description_ru if lang == "ru" else p.description_uz),
-        "price": float(p.price),
-        "image_url": p.image_url,
-        "category_id": p.category_id
-    } for p in rows]
+    data = [ProductOut(
+        id=p.id,
+        name=(p.name_en if lang == "en" else (p.name_ru if lang == "ru" else p.name_uz)),
+        name_uz=p.name_uz,
+        name_ru=p.name_ru,
+        name_en=p.name_en,
+        description=(p.description_en if lang == "en" else (p.description_ru if lang == "ru" else p.description_uz)),
+        description_uz=p.description_uz,
+        description_ru=p.description_ru,
+        description_en=p.description_en,
+        price=float(p.price),
+        image_url=p.image_url,
+        category_id=p.category_id
+    ) for p in rows]
     return base_success(data, lang=lang, pagination={"limit":limit,"offset":offset,"count":len(data),"total":total})

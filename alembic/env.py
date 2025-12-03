@@ -14,6 +14,10 @@ fileConfig(config.config_file_name)
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.db.base import Base  # noqa
 from app.core.config import settings  # noqa
+from app.db.models.user import User  # noqa
+from app.db.models.category import Category  # noqa
+from app.db.models.product import Product  # noqa
+from app.db.models.order import Order, OrderItem  # noqa
 
 target_metadata = Base.metadata
 

@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal, engine
 from app.db.models.user import User, RoleEnum
 from app.core.response import BaseHTTPException, ErrorCodes
-from app.core.security import decode_token, hash_password
 from app.core.config import settings
 
 
@@ -18,29 +17,17 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)) -> User:
-    if not authorization:
-        raise BaseHTTPException(401, ErrorCodes.AUTH_FAILED, "Authorization header required.")
+def get_current_user(
+    telegram_id: int | None = Header(None, alias="X-Telegram-Id"),
+    db: Session = Depends(get_db)
+) -> User:
+    if not telegram_id:
+        raise BaseHTTPException(401, ErrorCodes.AUTH_FAILED, "Authentication required (X-Telegram-Id missing)")
 
-    parts = authorization.strip().split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise BaseHTTPException(401, ErrorCodes.AUTH_FAILED, "Invalid token format. Must start with 'Bearer'.")
+    user = db.execute(select(User).where(User.telegram_id == telegram_id)).scalar_one_or_none()
 
-    token = parts[1]
-
-    try:
-        # Faqat security.py dagi decode_token funksiyasidan foydalanamiz
-        payload = decode_token(token)
-    except Exception:
-        raise BaseHTTPException(401, ErrorCodes.TOKEN_EXPIRED, "Token expired or invalid.")
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise BaseHTTPException(401, ErrorCodes.AUTH_FAILED, "Invalid token payload.")
-
-    user = db.get(User, int(user_id))
     if not user:
-        raise BaseHTTPException(401, ErrorCodes.AUTH_FAILED, "User not found.")
+        raise BaseHTTPException(401, ErrorCodes.AUTH_FAILED, "User not found or Telegram ID not set.")
 
     return user
 
@@ -56,16 +43,16 @@ async def create_db_and_init_admin():
     Base.metadata.create_all(bind=engine)
 
     with SessionLocal() as db:
+        # Check if any admin exists
         exists = db.execute(
-            select(User).where(User.email == (settings.INIT_ADMIN_EMAIL or ""))
-        ).scalar_one_or_none()
+            select(User).where(User.role == RoleEnum.admin)
+        ).first()
 
-        if not exists and settings.INIT_ADMIN_EMAIL and settings.INIT_ADMIN_PHONE and settings.INIT_ADMIN_PASSWORD:
+        if not exists and settings.INIT_ADMIN_PHONE:
             admin = User(
                 customer_name=settings.INIT_ADMIN_NAME or "Admin",
                 phone_number=settings.INIT_ADMIN_PHONE,
-                email=(settings.INIT_ADMIN_EMAIL or "").lower(),
-                password_hash=hash_password(settings.INIT_ADMIN_PASSWORD),
+                telegram_id=settings.INIT_ADMIN_TELEGRAM_ID,
                 role=RoleEnum.admin,
             )
             db.add(admin)
