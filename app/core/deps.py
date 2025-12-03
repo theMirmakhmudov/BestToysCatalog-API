@@ -49,11 +49,11 @@ async def create_db_and_init_admin():
         ).first()
 
         if not exists and settings.INIT_ADMIN_PHONE:
-            admin = User(
-                customer_name=settings.INIT_ADMIN_NAME or "Admin",
+            new_admin = User(
+                customer_name=settings.INIT_ADMIN_NAME,
                 phone_number=settings.INIT_ADMIN_PHONE,
                 telegram_id=settings.INIT_ADMIN_TELEGRAM_ID,
-                role=RoleEnum.admin,
+                role=RoleEnum.admin
             )
-            db.add(admin)
+            db.add(new_admin)
             db.commit()

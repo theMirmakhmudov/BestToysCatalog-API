@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     INIT_ADMIN_TELEGRAM_ID: int | None = None
     INIT_ADMIN_NAME: str | None = None
 
+    SECRET_KEY: str = "change_this_secret_key_in_production"
+
     class Config:
         env_file = ".env"
 

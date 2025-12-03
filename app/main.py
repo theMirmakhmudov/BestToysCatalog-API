@@ -12,6 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 limiter = Limiter(key_func=get_remote_address)
 
+from starlette.middleware.sessions import SessionMiddleware
+from app.core.config import settings
+
 
 origins = [
     "*",
@@ -106,4 +109,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
