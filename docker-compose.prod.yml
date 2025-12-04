@@ -1,7 +1,7 @@
 services:
   app:
     image: IMAGE_PLACEHOLDER
-    container_name: toys_catalog_app
+    container_name: obidovtoys_app
     restart: always
     ports:
       - "8000:8000"
@@ -11,8 +11,8 @@ services:
       - db
 
   db:
-    image: postgres:15
-    container_name: toys_catalog_db
+    image: postgres:latest
+    container_name: obidovtoys_db
     restart: always
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -22,7 +22,6 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     # Expose on localhost for backups
     ports:
-      - "127.0.0.1:5432:5432"
-
+      - "5432:5432"
 volumes:
   postgres_data:
