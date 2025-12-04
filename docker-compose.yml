@@ -1,23 +1,4 @@
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-themirmakhmudov}/toys_catalog_api:latest
-    container_name: toys_catalog_app
-    restart: always
-    ports:
-      - "8000:8000"
-    volumes:
-      - .:/app
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-    depends_on:
-      db:
-        condition: service_healthy
-
   db:
     image: postgres:16
     container_name: toys_catalog_db

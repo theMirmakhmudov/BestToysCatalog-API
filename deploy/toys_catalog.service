@@ -9,9 +9,9 @@ User=root
 Group=docker
 WorkingDirectory=/var/www/toys_catalog
 # Start the container
-ExecStart=/usr/bin/docker compose up
+ExecStart=/var/www/toys_catalog/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 # Stop the container
-ExecStop=/usr/bin/docker compose down
+ExecStop=/bin/kill -s TERM $MAINPID
 Restart=always
 RestartSec=3
 

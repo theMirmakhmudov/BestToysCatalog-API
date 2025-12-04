@@ -88,28 +88,9 @@ jobs:
       - name: 📦 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐳 Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: � Lowercase Repo Owner
-        id: lowercase_owner
+      - name: 📝 Prepare Docker Compose file
         run: |
-          echo "OWNER_LC=${OWNER,,}" >>${GITHUB_ENV}
-        env:
-          OWNER: '${{ github.repository_owner }}'
-
-      - name: �🔨 Build and Push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/${{ env.OWNER_LC }}/toys_catalog_api:latest
-
-
+          # No preparation needed for simple db compose
 
       - name: 🔑 Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -127,7 +108,7 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
           # Env vars for the application
-          DATABASE_URL: postgresql+psycopg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@db:5432/${{ secrets.POSTGRES_DB }}
+          DATABASE_URL: postgresql+psycopg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ secrets.POSTGRES_DB }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           APP_DEFAULT_LANG: ${{ secrets.APP_DEFAULT_LANG }}
           RATE_LIMIT_PUBLIC: ${{ secrets.RATE_LIMIT_PUBLIC }}
@@ -136,13 +117,11 @@ jobs:
           INIT_ADMIN_PHONE: ${{ secrets.INIT_ADMIN_PHONE }}
           INIT_ADMIN_TELEGRAM_ID: ${{ secrets.INIT_ADMIN_TELEGRAM_ID }}
           INIT_ADMIN_NAME: ${{ secrets.INIT_ADMIN_NAME }}
-          # Docker Registry Auth for Server
-          GHCR_PAT: ${{ secrets.GHCR_PAT }}
           GH_USERNAME: ${{ github.actor }}
           OWNER_LC: ${{ env.OWNER_LC }}
         run: |
           set -e
-          echo "✅ MAIN branch detected — starting Docker deploy..."
+          echo "✅ MAIN branch detected — starting Hybrid deploy..."
 
           # Copy service file and docker-compose.yml
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/toys_catalog.service
@@ -154,26 +133,52 @@ jobs:
           echo "📦 Setting up directories..."
           sudo mkdir -p /var/www/toys_catalog
           sudo chown $USER:$USER /var/www/toys_catalog
-          cd /var/www/toys_catalog
-
-          echo "🐳 Logging into GHCR..."
-          echo "$GHCR_PAT" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
-
-          echo "📄 Moving files..."
-          mv /tmp/docker-compose.yml ./docker-compose.yml
           
+          # Pull latest code
+          cd /var/www/toys_catalog
+          # Note: We assume git is initialized or we should rsync code. 
+          # Since previous steps used git checkout, we might need to rsync or git pull here if we want code updates.
+          # BUT, the previous docker method didn't copy code, it pulled an image.
+          # Now we need the code on the server.
+          # Let's use git pull if it's a git repo, or we need to scp the code.
+          # Simplest for now: git pull if exists, else clone.
+          
+          if [ -d ".git" ]; then
+            git pull origin main
+          else
+            git clone https://github.com/${OWNER_LC}/toys_catalog_api.git . || echo "Directory not empty, skipping clone"
+          fi
+
+          echo "🐳 Starting Database..."
+          mv /tmp/docker-compose.yml ./docker-compose.yml
+          # Create .env for Docker Compose (DB only)
+          cat > .env <<EOT
+          POSTGRES_USER=${POSTGRES_USER}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          POSTGRES_DB=${POSTGRES_DB}
+          EOT
+          
+          docker compose up -d db
+
+          echo "🐍 Setting up Python Environment..."
+          if [ ! -d ".venv" ]; then
+            python3 -m venv .venv
+          fi
+          .venv/bin/pip install -r requirements.txt
+          
+          # Run Migrations
+          # We need to point to localhost:5432 for the migration since it runs on host
+          export DATABASE_URL="${DATABASE_URL}"
+          .venv/bin/alembic upgrade head
+
+          echo "📄 Moving config files..."
           # Update systemd service
           sudo mv /tmp/toys_catalog.service /etc/systemd/system/toys_catalog.service
           sudo systemctl daemon-reload
           sudo systemctl enable toys_catalog.service
 
-          echo "🧩 Writing .env file..."
+          echo "🧩 Writing .env file for App..."
           cat > .env <<EOT
-          # Postgres Database
-          POSTGRES_USER=${POSTGRES_USER}
-          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-          POSTGRES_DB=${POSTGRES_DB}
-          # Application
           DATABASE_URL=${DATABASE_URL}
           SECRET_KEY=${SECRET_KEY}
           APP_DEFAULT_LANG=${APP_DEFAULT_LANG}
@@ -183,15 +188,9 @@ jobs:
           INIT_ADMIN_PHONE=${INIT_ADMIN_PHONE}
           INIT_ADMIN_TELEGRAM_ID=${INIT_ADMIN_TELEGRAM_ID}
           INIT_ADMIN_NAME=${INIT_ADMIN_NAME}
-          # Docker Image
-          GITHUB_REPOSITORY_OWNER=${OWNER_LC}
           EOT
-
-          echo "🔄 Pulling latest images..."
-          docker compose pull
           
-          echo "🚀 Restarting services..."
-          # We use systemctl to restart, which runs docker compose up
+          echo "🚀 Restarting App..."
           sudo systemctl restart toys_catalog.service
 
           echo "🌐 Configuring Nginx..."
@@ -209,5 +208,5 @@ jobs:
           sudo systemctl restart nginx
           sudo systemctl restart toys_catalog.service
 
-          echo "✅ Docker Deployment completed!"
+          echo "✅ Hybrid Deployment completed!"
           EOF
