@@ -48,15 +48,33 @@ def test_client():
 
 @pytest.fixture(scope="module")
 def admin_headers():
-    # Create or get admin
-    # We can use the API to register/login or direct DB.
-    # Let's use direct DB to ensure we have an admin.
-    # Actually, let's just use the API flow if possible, or hardcode headers if we mocked auth.
-    # Since we use X-Telegram-Id, we just need a valid telegram_id that is an admin.
-    # The system inits an admin at startup. Let's use that one or create a new one.
+    # Ensure admin exists
+    admin_phone = "+998999999999"
+    admin_tid = 999999999
     
-    # We'll assume the init admin exists.
-    return {"X-Telegram-Id": str(settings.INIT_ADMIN_TELEGRAM_ID)}
+    # Try to register as admin (if endpoint exists) or just insert into DB
+    # Since we don't have a public register-admin endpoint that is open, 
+    # we should rely on the init admin or create one via DB.
+    # But we don't want to mess with DB session here if possible.
+    # Let's use the one from settings, but make sure it's registered.
+    
+    # Actually, let's use the /auth/register-admin endpoint if we added it for testing/setup
+    # or just use the INIT_ADMIN credentials.
+    
+    # Let's try to register a new admin to be safe.
+    try:
+        client.post("/api/v1/auth/register-admin", json={
+            "customer_name": "Test Admin",
+            "phone_number": admin_phone
+        })
+        client.patch("/api/v1/auth/set-telegram-id", json={
+            "phone_number": admin_phone,
+            "telegram_id": admin_tid
+        })
+    except Exception:
+        pass
+        
+    return {"X-Telegram-Id": str(admin_tid)}
 
 @pytest.fixture(scope="module")
 def user_headers():
