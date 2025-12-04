@@ -16,7 +16,6 @@ def get_db() -> Generator[Session, None, None]:
     finally:
         db.close()
 
-
 def get_current_user(
     telegram_id: int | None = Header(None, alias="X-Telegram-Id"),
     db: Session = Depends(get_db)
