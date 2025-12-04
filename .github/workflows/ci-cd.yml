@@ -76,19 +76,14 @@ jobs:
           pytest -v --tb=short
 
   deploy:
-    name: 🚀 Deploy (Docker)
+    name: 🚀 Deploy (Native)
     runs-on: ubuntu-latest
     needs: build-and-test
     if: github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: 📦 Checkout repository
         uses: actions/checkout@v4
-
-
 
       - name: 🔑 Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -119,46 +114,29 @@ jobs:
           OWNER_LC: ${{ env.OWNER_LC }}
         run: |
           set -e
-          echo "✅ MAIN branch detected — starting Native deploy..."
+          echo "✅ MAIN branch detected — starting deploy..."
 
-          # Copy service file
           scp -o StrictHostKeyChecking=no deploy/obidovtoys.service $USER@$HOST:/tmp/obidovtoys.service
           scp -o StrictHostKeyChecking=no deploy/obidovtoys.nginx.conf $USER@$HOST:/tmp/obidovtoys.nginx.conf
 
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<EOF
           set -e
-          echo "📦 Setting up directories..."
+          echo "📦 Deploying project..."
+
           sudo mkdir -p /var/www/toys_catalog
           sudo chown $USER:$USER /var/www/toys_catalog
-          
           cd /var/www/toys_catalog
-          
-          echo "⬇️ Pulling latest code..."
-          if [ -d ".git" ]; then
+
+          # Robust Git Logic (Old Style + Fixes)
+          if [ -d .git ]; then
             git fetch origin main
             git reset --hard origin/main
           else
-            git clone https://github.com/${OWNER_LC}/BestToysCatalog-API.git . || echo "Directory not empty, skipping clone"
+            # Clone into current dir (.) instead of full path to avoid nesting issues
+            git clone https://github.com/${OWNER_LC}/BestToysCatalog-API.git . || (echo "⚠️ Dir not empty, forcing git init..." && git init && git remote add origin https://github.com/${OWNER_LC}/BestToysCatalog-API.git && git fetch origin main && git reset --hard origin/main)
           fi
 
-          echo "🐍 Setting up Python Environment..."
-          if [ ! -d ".venv" ]; then
-            python3 -m venv .venv
-          fi
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt
-          
-          # Run Migrations
-          export DATABASE_URL="${DATABASE_URL}"
-          .venv/bin/alembic upgrade head
-
-          echo "📄 Moving config files..."
-          # Update systemd service
-          sudo mv /tmp/obidovtoys.service /etc/systemd/system/obidovtoys.service
-          sudo systemctl daemon-reload
-          sudo systemctl enable obidovtoys.service
-
-          echo "🧩 Writing .env file..."
+          echo "🧩 Writing environment variables..."
           cat > .env <<EOT
           DATABASE_URL=${DATABASE_URL}
           SECRET_KEY=${SECRET_KEY}
@@ -170,24 +148,41 @@ jobs:
           INIT_ADMIN_TELEGRAM_ID=${INIT_ADMIN_TELEGRAM_ID}
           INIT_ADMIN_NAME=${INIT_ADMIN_NAME}
           EOT
+
+          echo "🐍 Installing dependencies..."
+          if [ ! -d ".venv" ]; then
+            python3 -m venv .venv
+          fi
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
           
-          echo "🚀 Restarting App..."
+          # Run Migrations (Critical for updates)
+          export DATABASE_URL="${DATABASE_URL}"
+          alembic upgrade head
+
+          echo "⚙️ Updating systemd service..."
+          sudo mv /tmp/obidovtoys.service /etc/systemd/system/obidovtoys.service
+          sudo systemctl daemon-reload
+          sudo systemctl enable obidovtoys.service
           sudo systemctl restart obidovtoys.service
 
-          echo "🌐 Configuring Nginx..."
+          echo "🌐 Installing Nginx & Certbot..."
           sudo apt update -y
           sudo apt install -y nginx certbot python3-certbot-nginx
+
+          echo "🌐 Configuring Nginx..."
           sudo mv /tmp/obidovtoys.nginx.conf /etc/nginx/sites-available/obidovtoys.conf
           sudo ln -sf /etc/nginx/sites-available/obidovtoys.conf /etc/nginx/sites-enabled/obidovtoys.conf
           sudo nginx -t
           sudo systemctl reload nginx
 
           echo "🔒 Setting up SSL with Let's Encrypt..."
-          sudo certbot --nginx -d ${DOMAIN} --non-interactive --agree-tos -m ${SSL_EMAIL} || echo "⚠️ SSL setup skipped or failed"
+          sudo certbot --nginx -d ${DOMAIN} --non-interactive --agree-tos -m ${SSL_EMAIL} || echo "⚠️ Certbot renewal failed"
 
-          echo "♻️ Restarting services..."
+          echo "♻️ Restarting Nginx and FastAPI..."
           sudo systemctl restart nginx
           sudo systemctl restart obidovtoys.service
 
-          echo "✅ Native Deployment completed!"
+          echo "✅ Deployment & SSL setup completed successfully!"
           EOF
