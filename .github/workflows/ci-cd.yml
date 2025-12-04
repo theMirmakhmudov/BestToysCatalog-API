@@ -76,106 +76,113 @@ jobs:
           pytest -v --tb=short
 
   deploy:
-    name: 🚀 Deploy & Enable SSL
+    name: 🚀 Deploy (Docker)
     runs-on: ubuntu-latest
     needs: build-and-test
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: 📦 Checkout repository
         uses: actions/checkout@v4
+
+      - name: 🐳 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: � Lowercase Repo Owner
+        id: lowercase_owner
+        run: |
+          echo "OWNER_LC=${OWNER,,}" >>${GITHUB_ENV}
+        env:
+          OWNER: '${{ github.repository_owner }}'
+
+      - name: �🔨 Build and Push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ env.OWNER_LC }}/toys_catalog_api:latest
+
+      - name: 📝 Prepare Docker Compose file
+        run: |
+          sed -i "s|IMAGE_PLACEHOLDER|ghcr.io/${{ env.OWNER_LC }}/toys_catalog_api:latest|g" docker-compose.prod.yml
 
       - name: 🔑 Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
 
-      - name: 🚀 Deploy to Production with SSL
+      - name: 🚀 Deploy to Production
         env:
           HOST: ${{ secrets.SERVER_HOST }}
           USER: ${{ secrets.SERVER_USER }}
-          DOMAIN: api.obidovtoys.uz
-          EMAIL: ${{ secrets.SSL_EMAIL }}
+          # Env vars for the application
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          JWT_ALG: ${{ secrets.JWT_ALG }}
-          ACCESS_TTL_SECONDS: ${{ secrets.ACCESS_TTL_SECONDS }}
-          REFRESH_TTL_SECONDS: ${{ secrets.REFRESH_TTL_SECONDS }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
           APP_DEFAULT_LANG: ${{ secrets.APP_DEFAULT_LANG }}
           RATE_LIMIT_PUBLIC: ${{ secrets.RATE_LIMIT_PUBLIC }}
           RATE_LIMIT_AUTH: ${{ secrets.RATE_LIMIT_AUTH }}
           RATE_LIMIT_ADMIN: ${{ secrets.RATE_LIMIT_ADMIN }}
-          INIT_ADMIN_EMAIL: ${{ secrets.INIT_ADMIN_EMAIL }}
           INIT_ADMIN_PHONE: ${{ secrets.INIT_ADMIN_PHONE }}
-          INIT_ADMIN_PASSWORD: ${{ secrets.INIT_ADMIN_PASSWORD }}
+          INIT_ADMIN_TELEGRAM_ID: ${{ secrets.INIT_ADMIN_TELEGRAM_ID }}
           INIT_ADMIN_NAME: ${{ secrets.INIT_ADMIN_NAME }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          SMTP_FROM: ${{ secrets.SMTP_FROM }}
-          SMTP_FROM_NAME: ${{ secrets.SMTP_FROM_NAME }}
-          SMTP_TLS: ${{ secrets.SMTP_TLS }}
+          # Docker Registry Auth for Server
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          GH_USERNAME: ${{ github.actor }}
         run: |
           set -e
-          echo "✅ MAIN branch detected — starting deploy..."
+          echo "✅ MAIN branch detected — starting Docker deploy..."
 
+          # Copy service file and docker-compose.prod.yml
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/toys_catalog.service
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.nginx.conf $USER@$HOST:/tmp/toys_catalog.nginx.conf
+          scp -o StrictHostKeyChecking=no docker-compose.prod.yml $USER@$HOST:/tmp/docker-compose.prod.yml
 
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<EOF
           set -e
-          echo "📦 Deploying project..."
-
+          echo "📦 Setting up directories..."
           sudo mkdir -p /var/www/toys_catalog
+          sudo chown $USER:$USER /var/www/toys_catalog
           cd /var/www/toys_catalog
 
-          if [ -d .git ]; then
-            git fetch origin main
-            git reset --hard origin/main
-          else
-            git clone https://github.com/theMirmakhmudov/BestToysCatalog-API.git /var/www/toys_catalog
-          fi
+          echo "🐳 Logging into GHCR..."
+          echo "$GHCR_PAT" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
 
-          echo "🧩 Writing environment variables..."
-          cat > /var/www/toys_catalog/.env <<EOT
+          echo "📄 Moving files..."
+          mv /tmp/docker-compose.prod.yml ./docker-compose.prod.yml
+          
+          # Update systemd service
+          sudo mv /tmp/toys_catalog.service /etc/systemd/system/toys_catalog.service
+          sudo systemctl daemon-reload
+          sudo systemctl enable toys_catalog.service
+
+          echo "🧩 Writing .env file..."
+          cat > .env <<EOT
+          # Note: DATABASE_URL should point to the docker service 'db' if using dockerized db
+          # e.g. postgresql+psycopg://postgres:postgres@db:5432/toys_catalog
           DATABASE_URL=${DATABASE_URL}
-          JWT_SECRET=${JWT_SECRET}
-          JWT_ALG=${JWT_ALG}
-          ACCESS_TTL_SECONDS=${ACCESS_TTL_SECONDS}
-          REFRESH_TTL_SECONDS=${REFRESH_TTL_SECONDS}
+          SECRET_KEY=${SECRET_KEY}
           APP_DEFAULT_LANG=${APP_DEFAULT_LANG}
           RATE_LIMIT_PUBLIC=${RATE_LIMIT_PUBLIC}
           RATE_LIMIT_AUTH=${RATE_LIMIT_AUTH}
           RATE_LIMIT_ADMIN=${RATE_LIMIT_ADMIN}
-          INIT_ADMIN_EMAIL=${INIT_ADMIN_EMAIL}
           INIT_ADMIN_PHONE=${INIT_ADMIN_PHONE}
-          INIT_ADMIN_PASSWORD=${INIT_ADMIN_PASSWORD}
+          INIT_ADMIN_TELEGRAM_ID=${INIT_ADMIN_TELEGRAM_ID}
           INIT_ADMIN_NAME=${INIT_ADMIN_NAME}
-          SMTP_HOST=${SMTP_HOST}
-          SMTP_PORT=${SMTP_PORT}
-          SMTP_USERNAME=${SMTP_USERNAME}
-          SMTP_PASSWORD=${SMTP_PASSWORD}
-          SMTP_FROM=${SMTP_FROM}
-          SMTP_FROM_NAME=${SMTP_FROM_NAME}
-          SMTP_TLS=${SMTP_TLS}
           EOT
 
-          echo "🐍 Installing dependencies..."
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-          echo "⚙️ Updating systemd service..."
-          sudo mv /tmp/toys_catalog.service /etc/systemd/system/toys_catalog.service
-          sudo systemctl daemon-reload
-          sudo systemctl enable toys_catalog.service
+          echo "🔄 Pulling latest images..."
+          docker compose -f docker-compose.prod.yml pull
+          
+          echo "🚀 Restarting services..."
+          # We use systemctl to restart, which runs docker compose up
           sudo systemctl restart toys_catalog.service
-
-          echo "🌐 Installing Nginx & Certbot..."
-          sudo apt update -y
-          sudo apt install -y nginx certbot python3-certbot-nginx
 
           echo "🌐 Configuring Nginx..."
           sudo mv /tmp/toys_catalog.nginx.conf /etc/nginx/sites-available/toys_catalog.conf
@@ -183,12 +190,5 @@ jobs:
           sudo nginx -t
           sudo systemctl reload nginx
 
-          echo "🔒 Setting up SSL with Let's Encrypt..."
-          sudo certbot --nginx -d api.obidovtoys.uz --non-interactive --agree-tos -m obidovtoys@gmail.com || echo "⚠️ Certbot renewal failed"
-
-          echo "♻️ Restarting Nginx and FastAPI..."
-          sudo systemctl restart nginx
-          sudo systemctl restart toys_catalog.service
-
-          echo "✅ Deployment & SSL setup completed successfully!"
+          echo "✅ Docker Deployment completed!"
           EOF

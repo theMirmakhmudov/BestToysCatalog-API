@@ -1,18 +1,19 @@
 [Unit]
-Description=🧸 Toys Catalog FastAPI Service
-After=network.target
+Description=🧸 Toys Catalog Docker Service
+Requires=docker.service
+After=docker.service network.target
 
 [Service]
+Type=simple
 User=root
-Group=www-data
+Group=docker
 WorkingDirectory=/var/www/toys_catalog
-EnvironmentFile=/var/www/toys_catalog/.env
-ExecStart=/var/www/toys_catalog/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Start the container
+ExecStart=/usr/bin/docker compose -f docker-compose.prod.yml up
+# Stop the container
+ExecStop=/usr/bin/docker compose -f docker-compose.prod.yml down
 Restart=always
 RestartSec=3
-KillSignal=SIGINT
-TimeoutStopSec=10
-SyslogIdentifier=toys_catalog
 
 [Install]
 WantedBy=multi-user.target
