@@ -106,7 +106,7 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
           # Env vars for the application
-          DATABASE_URL: postgresql+psycopg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.SERVER_HOST }}:5432/${{ secrets.POSTGRES_DB }}
+          DATABASE_URL: postgresql+psycopg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ secrets.POSTGRES_DB }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           APP_DEFAULT_LANG: ${{ secrets.APP_DEFAULT_LANG }}
           RATE_LIMIT_PUBLIC: ${{ secrets.RATE_LIMIT_PUBLIC }}
@@ -137,7 +137,7 @@ jobs:
           if [ -d ".git" ]; then
             git pull origin main
           else
-            git clone https://github.com/${OWNER_LC}/toys_catalog_api.git . || echo "Directory not empty, skipping clone"
+            git clone https://github.com/${OWNER_LC}/BestToysCatalog-API.git . || echo "Directory not empty, skipping clone"
           fi
 
           echo " Setting up Python Environment..."
@@ -152,9 +152,9 @@ jobs:
 
           echo "📄 Moving config files..."
           # Update systemd service
-          sudo mv /tmp/toys_catalog.service /etc/systemd/system/toys_catalog.service
+          sudo mv /tmp/toys_catalog.service /etc/systemd/system/obidovtoys.service
           sudo systemctl daemon-reload
-          sudo systemctl enable toys_catalog.service
+          sudo systemctl enable obidovtoys.service
 
           echo "🧩 Writing .env file..."
           cat > .env <<EOT
@@ -170,13 +170,13 @@ jobs:
           EOT
           
           echo "🚀 Restarting App..."
-          sudo systemctl restart toys_catalog.service
+          sudo systemctl restart obidov.service
 
           echo "🌐 Configuring Nginx..."
           sudo apt update -y
           sudo apt install -y nginx certbot python3-certbot-nginx
-          sudo mv /tmp/toys_catalog.nginx.conf /etc/nginx/sites-available/toys_catalog.conf
-          sudo ln -sf /etc/nginx/sites-available/toys_catalog.conf /etc/nginx/sites-enabled/toys_catalog.conf
+          sudo mv /tmp/obidovtoys.nginx.conf /etc/nginx/sites-available/obidovtoys.conf
+          sudo ln -sf /etc/nginx/sites-available/obidovtoys.conf /etc/nginx/sites-enabled/obidovtoys.conf
           sudo nginx -t
           sudo systemctl reload nginx
 
@@ -185,7 +185,7 @@ jobs:
 
           echo "♻️ Restarting services..."
           sudo systemctl restart nginx
-          sudo systemctl restart toys_catalog.service
+          sudo systemctl restart obidovtoys.service
 
           echo "✅ Native Deployment completed!"
           EOF
