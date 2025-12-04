@@ -122,8 +122,8 @@ jobs:
           echo "✅ MAIN branch detected — starting Native deploy..."
 
           # Copy service file
-          scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/obidovtoys.service
-          scp -o StrictHostKeyChecking=no deploy/toys_catalog.nginx.conf $USER@$HOST:/tmp/obidovtoys.nginx.conf
+          scp -o StrictHostKeyChecking=no deploy/obidovtoys.service $USER@$HOST:/tmp/obidovtoys.service
+          scp -o StrictHostKeyChecking=no deploy/obidovtoys.nginx.conf $USER@$HOST:/tmp/obidovtoys.nginx.conf
 
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<EOF
           set -e
@@ -131,19 +131,21 @@ jobs:
           sudo mkdir -p /var/www/toys_catalog
           sudo chown $USER:$USER /var/www/toys_catalog
           
-          # Pull latest code
           cd /var/www/toys_catalog
           
+          echo "⬇️ Pulling latest code..."
           if [ -d ".git" ]; then
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
           else
-            git clone https://github.com/theMirmakhmudov/BestToysCatalog-API.git . || echo "Directory not empty, skipping clone"
+            git clone https://github.com/${OWNER_LC}/toys_catalog_api.git . || echo "Directory not empty, skipping clone"
           fi
 
-          echo " Setting up Python Environment..."
+          echo "🐍 Setting up Python Environment..."
           if [ ! -d ".venv" ]; then
             python3 -m venv .venv
           fi
+          .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
           
           # Run Migrations
@@ -152,7 +154,7 @@ jobs:
 
           echo "📄 Moving config files..."
           # Update systemd service
-          sudo mv /tmp/toys_catalog.service /etc/systemd/system/obidovtoys.service
+          sudo mv /tmp/obidovtoys.service /etc/systemd/system/obidovtoys.service
           sudo systemctl daemon-reload
           sudo systemctl enable obidovtoys.service
 
@@ -170,7 +172,7 @@ jobs:
           EOT
           
           echo "🚀 Restarting App..."
-          sudo systemctl restart obidov.service
+          sudo systemctl restart obidovtoys.service
 
           echo "🌐 Configuring Nginx..."
           sudo apt update -y
