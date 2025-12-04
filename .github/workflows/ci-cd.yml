@@ -88,9 +88,7 @@ jobs:
       - name: 📦 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 📝 Prepare Docker Compose file
-        run: |
-          # No preparation needed for simple db compose
+
 
       - name: 🔑 Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -121,12 +119,11 @@ jobs:
           OWNER_LC: ${{ env.OWNER_LC }}
         run: |
           set -e
-          echo "✅ MAIN branch detected — starting Hybrid deploy..."
+          echo "✅ MAIN branch detected — starting Native deploy..."
 
-          # Copy service file and docker-compose.yml
+          # Copy service file
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/toys_catalog.service
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.nginx.conf $USER@$HOST:/tmp/toys_catalog.nginx.conf
-          scp -o StrictHostKeyChecking=no docker-compose.yml $USER@$HOST:/tmp/docker-compose.yml
 
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<EOF
           set -e
@@ -136,12 +133,6 @@ jobs:
           
           # Pull latest code
           cd /var/www/toys_catalog
-          # Note: We assume git is initialized or we should rsync code. 
-          # Since previous steps used git checkout, we might need to rsync or git pull here if we want code updates.
-          # BUT, the previous docker method didn't copy code, it pulled an image.
-          # Now we need the code on the server.
-          # Let's use git pull if it's a git repo, or we need to scp the code.
-          # Simplest for now: git pull if exists, else clone.
           
           if [ -d ".git" ]; then
             git pull origin main
@@ -149,25 +140,13 @@ jobs:
             git clone https://github.com/${OWNER_LC}/toys_catalog_api.git . || echo "Directory not empty, skipping clone"
           fi
 
-          echo "🐳 Starting Database..."
-          mv /tmp/docker-compose.yml ./docker-compose.yml
-          # Create .env for Docker Compose (DB only)
-          cat > .env <<EOT
-          POSTGRES_USER=${POSTGRES_USER}
-          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-          POSTGRES_DB=${POSTGRES_DB}
-          EOT
-          
-          docker compose up -d db
-
-          echo "🐍 Setting up Python Environment..."
+          echo " Setting up Python Environment..."
           if [ ! -d ".venv" ]; then
             python3 -m venv .venv
           fi
           .venv/bin/pip install -r requirements.txt
           
           # Run Migrations
-          # We need to point to localhost:5432 for the migration since it runs on host
           export DATABASE_URL="${DATABASE_URL}"
           .venv/bin/alembic upgrade head
 
@@ -177,7 +156,7 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl enable toys_catalog.service
 
-          echo "🧩 Writing .env file for App..."
+          echo "🧩 Writing .env file..."
           cat > .env <<EOT
           DATABASE_URL=${DATABASE_URL}
           SECRET_KEY=${SECRET_KEY}
@@ -208,5 +187,5 @@ jobs:
           sudo systemctl restart nginx
           sudo systemctl restart toys_catalog.service
 
-          echo "✅ Hybrid Deployment completed!"
+          echo "✅ Native Deployment completed!"
           EOF
