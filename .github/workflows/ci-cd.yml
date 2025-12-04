@@ -139,6 +139,7 @@ jobs:
           # Docker Registry Auth for Server
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
           GH_USERNAME: ${{ github.actor }}
+          OWNER_LC: ${{ env.OWNER_LC }}
         run: |
           set -e
           echo "✅ MAIN branch detected — starting Docker deploy..."
@@ -183,7 +184,7 @@ jobs:
           INIT_ADMIN_TELEGRAM_ID=${INIT_ADMIN_TELEGRAM_ID}
           INIT_ADMIN_NAME=${INIT_ADMIN_NAME}
           # Docker Image
-          GITHUB_REPOSITORY_OWNER=${GH_USERNAME}
+          GITHUB_REPOSITORY_OWNER=${OWNER_LC}
           EOT
 
           echo "🔄 Pulling latest images..."
