@@ -122,8 +122,14 @@ jobs:
         env:
           HOST: ${{ secrets.SERVER_HOST }}
           USER: ${{ secrets.SERVER_USER }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          SSL_EMAIL: ${{ secrets.SSL_EMAIL }}
+          # Postgres Database Credentials
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
           # Env vars for the application
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: postgresql+psycopg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@db:5432/${{ secrets.POSTGRES_DB }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           APP_DEFAULT_LANG: ${{ secrets.APP_DEFAULT_LANG }}
           RATE_LIMIT_PUBLIC: ${{ secrets.RATE_LIMIT_PUBLIC }}
@@ -164,8 +170,11 @@ jobs:
 
           echo "🧩 Writing .env file..."
           cat > .env <<EOT
-          # Note: DATABASE_URL should point to the docker service 'db' if using dockerized db
-          # e.g. postgresql+psycopg://postgres:postgres@db:5432/toys_catalog
+          # Postgres Database
+          POSTGRES_USER=${POSTGRES_USER}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          POSTGRES_DB=${POSTGRES_DB}
+          # Application
           DATABASE_URL=${DATABASE_URL}
           SECRET_KEY=${SECRET_KEY}
           APP_DEFAULT_LANG=${APP_DEFAULT_LANG}
@@ -185,10 +194,19 @@ jobs:
           sudo systemctl restart toys_catalog.service
 
           echo "🌐 Configuring Nginx..."
+          sudo apt update -y
+          sudo apt install -y nginx certbot python3-certbot-nginx
           sudo mv /tmp/toys_catalog.nginx.conf /etc/nginx/sites-available/toys_catalog.conf
           sudo ln -sf /etc/nginx/sites-available/toys_catalog.conf /etc/nginx/sites-enabled/toys_catalog.conf
           sudo nginx -t
           sudo systemctl reload nginx
+
+          echo "🔒 Setting up SSL with Let's Encrypt..."
+          sudo certbot --nginx -d ${DOMAIN} --non-interactive --agree-tos -m ${SSL_EMAIL} || echo "⚠️ SSL setup skipped or failed"
+
+          echo "♻️ Restarting services..."
+          sudo systemctl restart nginx
+          sudo systemctl restart toys_catalog.service
 
           echo "✅ Docker Deployment completed!"
           EOF
