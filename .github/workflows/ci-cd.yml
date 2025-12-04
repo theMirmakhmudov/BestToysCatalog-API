@@ -109,9 +109,7 @@ jobs:
           push: true
           tags: ghcr.io/${{ env.OWNER_LC }}/toys_catalog_api:latest
 
-      - name: 📝 Prepare Docker Compose file
-        run: |
-          sed -i "s|IMAGE_PLACEHOLDER|ghcr.io/${{ env.OWNER_LC }}/toys_catalog_api:latest|g" docker-compose.prod.yml
+
 
       - name: 🔑 Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -145,10 +143,10 @@ jobs:
           set -e
           echo "✅ MAIN branch detected — starting Docker deploy..."
 
-          # Copy service file and docker-compose.prod.yml
+          # Copy service file and docker-compose.yml
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.service $USER@$HOST:/tmp/toys_catalog.service
           scp -o StrictHostKeyChecking=no deploy/toys_catalog.nginx.conf $USER@$HOST:/tmp/toys_catalog.nginx.conf
-          scp -o StrictHostKeyChecking=no docker-compose.prod.yml $USER@$HOST:/tmp/docker-compose.prod.yml
+          scp -o StrictHostKeyChecking=no docker-compose.yml $USER@$HOST:/tmp/docker-compose.yml
 
           ssh -o StrictHostKeyChecking=no $USER@$HOST <<EOF
           set -e
@@ -161,7 +159,7 @@ jobs:
           echo "$GHCR_PAT" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
 
           echo "📄 Moving files..."
-          mv /tmp/docker-compose.prod.yml ./docker-compose.prod.yml
+          mv /tmp/docker-compose.yml ./docker-compose.yml
           
           # Update systemd service
           sudo mv /tmp/toys_catalog.service /etc/systemd/system/toys_catalog.service
@@ -184,10 +182,12 @@ jobs:
           INIT_ADMIN_PHONE=${INIT_ADMIN_PHONE}
           INIT_ADMIN_TELEGRAM_ID=${INIT_ADMIN_TELEGRAM_ID}
           INIT_ADMIN_NAME=${INIT_ADMIN_NAME}
+          # Docker Image
+          GITHUB_REPOSITORY_OWNER=${GH_USERNAME}
           EOT
 
           echo "🔄 Pulling latest images..."
-          docker compose -f docker-compose.prod.yml pull
+          docker compose pull
           
           echo "🚀 Restarting services..."
           # We use systemctl to restart, which runs docker compose up
