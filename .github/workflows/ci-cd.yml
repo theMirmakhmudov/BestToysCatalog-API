@@ -112,6 +112,7 @@ jobs:
           INIT_ADMIN_NAME: ${{ secrets.INIT_ADMIN_NAME }}
           GH_USERNAME: ${{ github.actor }}
           OWNER_LC: ${{ env.OWNER_LC }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           echo "✅ MAIN branch detected — starting deploy..."
@@ -129,11 +130,15 @@ jobs:
 
           # Robust Git Logic (Old Style + Fixes)
           if [ -d .git ]; then
+            echo "🔄 Git repo detected. Fetching..."
+            # Update remote url just in case
+            git remote set-url origin https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${OWNER_LC}/BestToysCatalog-API.git
             git fetch origin main
             git reset --hard origin/main
           else
+            echo "✨ Cloning repository..."
             # Clone into current dir (.) instead of full path to avoid nesting issues
-            git clone https://github.com/${OWNER_LC}/BestToysCatalog-API.git . || (echo "⚠️ Dir not empty, forcing git init..." && git init && git remote add origin https://github.com/${OWNER_LC}/BestToysCatalog-API.git && git fetch origin main && git reset --hard origin/main)
+            git clone https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${OWNER_LC}/BestToysCatalog-API.git . || (echo "⚠️ Dir not empty, forcing git init..." && git init && git remote add origin https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${OWNER_LC}/BestToysCatalog-API.git && git fetch origin main && git reset --hard origin/main)
           fi
 
           echo "🧩 Writing environment variables..."
