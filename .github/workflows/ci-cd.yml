@@ -138,7 +138,7 @@ jobs:
           else
             echo "✨ Cloning repository..."
             # Clone into current dir (.) instead of full path to avoid nesting issues
-            git clone https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${OWNER_LC}/BestToysCatalog-API.git . || (echo "⚠️ Dir not empty, forcing git init..." && git init && git remote add origin https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${OWNER_LC}/BestToysCatalog-API.git && git fetch origin main && git reset --hard origin/main)
+            git clone https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/theMirmakhmudov/BestToysCatalog-API.git . || (echo "⚠️ Dir not empty, forcing git init..." && git init && git remote add origin https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${OWNER_LC}/BestToysCatalog-API.git && git fetch origin main && git reset --hard origin/main)
           fi
 
           echo "🧩 Writing environment variables..."
