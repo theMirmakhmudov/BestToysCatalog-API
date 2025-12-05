@@ -5,11 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
-Group=www
 WorkingDirectory=/var/www/toys_catalog
-# Start the container
 ExecStart=/var/www/toys_catalog/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
-# Stop the container
 ExecStop=/bin/kill -s TERM $MAINPID
 Restart=always
 RestartSec=3
