@@ -101,7 +101,7 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
           # Env vars for the application
-          DATABASE_URL: postgresql+psycopg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ secrets.POSTGRES_DB }}
+          DATABASE_URL: postgresql+psycopg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@{{ secrets.SERVER_HOST }}:5432/${{ secrets.POSTGRES_DB }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           APP_DEFAULT_LANG: ${{ secrets.APP_DEFAULT_LANG }}
           RATE_LIMIT_PUBLIC: ${{ secrets.RATE_LIMIT_PUBLIC }}
