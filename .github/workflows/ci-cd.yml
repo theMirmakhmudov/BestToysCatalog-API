@@ -139,7 +139,8 @@ jobs:
             # Clone into current dir (.) instead of full path to avoid nesting issues
             git clone https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/BestToysCatalog-API.git . || (echo "⚠️ Dir not empty, forcing git init..." && git init && git remote add origin https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/BestToysCatalog-API.git && git fetch origin main && git reset --hard origin/main)
           fi
-
+          
+          
           echo "🧩 Writing environment variables..."
           cat > .env <<EOT
           DATABASE_URL=${DATABASE_URL}
