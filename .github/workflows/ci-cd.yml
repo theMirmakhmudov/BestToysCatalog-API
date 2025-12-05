@@ -101,7 +101,7 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
           # Env vars for the application
-          DATABASE_URL: postgresql+psycopg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@{{ secrets.SERVER_HOST }}:5432/${{ secrets.POSTGRES_DB }}
+          DATABASE_URL: postgresql+psycopg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.SERVER_HOST }}:5432/${{ secrets.POSTGRES_DB }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           APP_DEFAULT_LANG: ${{ secrets.APP_DEFAULT_LANG }}
           RATE_LIMIT_PUBLIC: ${{ secrets.RATE_LIMIT_PUBLIC }}
@@ -111,7 +111,6 @@ jobs:
           INIT_ADMIN_TELEGRAM_ID: ${{ secrets.INIT_ADMIN_TELEGRAM_ID }}
           INIT_ADMIN_NAME: ${{ secrets.INIT_ADMIN_NAME }}
           GH_USERNAME: ${{ github.actor }}
-          OWNER_LC: ${{ env.OWNER_LC }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
@@ -132,13 +131,13 @@ jobs:
           if [ -d .git ]; then
             echo "🔄 Git repo detected. Fetching..."
             # Update remote url just in case
-            git remote set-url origin https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${OWNER_LC}/BestToysCatalog-API.git
+            git remote set-url origin https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/BestToysCatalog-API.git
             git fetch origin main
             git reset --hard origin/main
           else
             echo "✨ Cloning repository..."
             # Clone into current dir (.) instead of full path to avoid nesting issues
-            git clone https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/theMirmakhmudov/BestToysCatalog-API.git . || (echo "⚠️ Dir not empty, forcing git init..." && git init && git remote add origin https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${OWNER_LC}/BestToysCatalog-API.git && git fetch origin main && git reset --hard origin/main)
+            git clone https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/BestToysCatalog-API.git . || (echo "⚠️ Dir not empty, forcing git init..." && git init && git remote add origin https://${GH_USERNAME}:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/BestToysCatalog-API.git && git fetch origin main && git reset --hard origin/main)
           fi
 
           echo "🧩 Writing environment variables..."
